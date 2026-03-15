@@ -8,6 +8,7 @@ const newChatBtn = document.getElementById('new-chat-btn');
 const quickTopicsList = document.getElementById('quick-topics-list');
 const historyList = document.getElementById('history-list');
 const modeBtns = document.querySelectorAll('.mode-btn');
+const mobileModeBtns = document.querySelectorAll('.mobile-mode-btn');
 const sidebarTabs = document.querySelectorAll('.sidebar-tab');
 const micBtn = document.getElementById('mic-btn');
 const ttsToggle = document.getElementById('tts-toggle');
@@ -189,6 +190,9 @@ function setMode(mode) {
     currentMode = mode;
     currentPersonaIndex = null;
     modeBtns.forEach((btn) => {
+        btn.classList.toggle('active', btn.dataset.mode === mode);
+    });
+    mobileModeBtns.forEach((btn) => {
         btn.classList.toggle('active', btn.dataset.mode === mode);
     });
     headerTitle.textContent = MODE_TITLES[mode] || mode;
@@ -471,6 +475,10 @@ messageInput.addEventListener('keydown', (e) => {
 });
 
 modeBtns.forEach((btn) => {
+    btn.addEventListener('click', () => setMode(btn.dataset.mode));
+});
+
+mobileModeBtns.forEach((btn) => {
     btn.addEventListener('click', () => setMode(btn.dataset.mode));
 });
 
