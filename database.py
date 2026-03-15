@@ -30,6 +30,13 @@ def init_db():
             created_at TEXT NOT NULL,
             FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
         );
+        CREATE TABLE IF NOT EXISTS custom_prompts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            prompt_type TEXT NOT NULL DEFAULT 'recruiting',
+            prompt_text TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
     """)
     conn.commit()
     conn.close()
@@ -104,5 +111,35 @@ def get_conversation(conversation_id):
 def delete_conversation(conversation_id):
     conn = get_db()
     conn.execute("DELETE FROM conversations WHERE id = ?", (conversation_id,))
+    conn.commit()
+    conn.close()
+
+
+def get_custom_prompt(prompt_type="recruiting"):
+    conn = get_db()
+    row = conn.execute(
+        "SELECT prompt_text FROM custom_prompts WHERE prompt_type = ? ORDER BY updated_at DESC LIMIT 1",
+        (prompt_type,),
+    ).fetchone()
+    conn.close()
+    return row["prompt_text"] if row else None
+
+
+def save_custom_prompt(prompt_type, prompt_text):
+    conn = get_db()
+    now = datetime.now(timezone.utc).isoformat()
+    existing = conn.execute(
+        "SELECT id FROM custom_prompts WHERE prompt_type = ?", (prompt_type,)
+    ).fetchone()
+    if existing:
+        conn.execute(
+            "UPDATE custom_prompts SET prompt_text = ?, updated_at = ? WHERE id = ?",
+            (prompt_text, now, existing["id"]),
+        )
+    else:
+        conn.execute(
+            "INSERT INTO custom_prompts (prompt_type, prompt_text, created_at, updated_at) VALUES (?, ?, ?, ?)",
+            (prompt_type, prompt_text, now, now),
+        )
     conn.commit()
     conn.close()

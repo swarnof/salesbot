@@ -18,6 +18,7 @@ let isLoading = false;
 let currentConversationId = null;
 let ttsEnabled = false;
 let isRecording = false;
+let currentPersonaIndex = null;
 
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 let recognition = null;
@@ -78,7 +79,7 @@ function toggleTTS() {
 function speakText(text) {
     if (!ttsEnabled || !synth) return;
     synth.cancel();
-    const cleaned = text.replace(/\*\*/g, '').replace(/[⚠️🎯📈⚡💬]/g, '');
+    const cleaned = text.replace(/\*\*/g, '').replace(/[⚠️🎯📈⚡💬🛠️🎭]/g, '').replace(/---[A-Z_]+---/g, '');
     const sentences = cleaned.match(/[^.!?]+[.!?]+|[^.!?]+$/g) || [cleaned];
     for (const sentence of sentences) {
         const utterance = new SpeechSynthesisUtterance(sentence.trim());
@@ -102,6 +103,13 @@ function toggleMic() {
     }
 }
 
+const MODE_TITLES = {
+    recruiting: 'Recruiting Mode',
+    training: 'Training Mode',
+    customize: 'Customize Mode',
+    practice: 'Practice Mode',
+};
+
 const TOPICS = {
     recruiting: [
         'Tell me about the opportunity',
@@ -119,13 +127,57 @@ const TOPICS = {
         'Practice a sales role-play with me',
         'How do I stay motivated after rejection?',
     ],
+    customize: [
+        "Let's set up my recruiting bot",
+        'I want to change the tone',
+        'Add my company info',
+        'Update the objection handling',
+        'Change the call to action',
+        'Start over with a fresh prompt',
+    ],
+    practice: [],  // Will be populated with personas
 };
 
 function renderTopics() {
+    if (currentMode === 'practice') {
+        renderPersonaSelection();
+        return;
+    }
     const topics = TOPICS[currentMode];
     quickTopicsList.innerHTML = topics
         .map((topic) => `<button class="topic-btn" onclick="sendTopic('${topic.replace(/'/g, "\\'")}')">💬 ${topic}</button>`)
         .join('');
+}
+
+function renderPersonaSelection() {
+    quickTopicsList.innerHTML = `
+        <p class="persona-label">Choose a prospect to practice with:</p>
+        <button class="topic-btn persona-btn" onclick="startPractice(0)">🧑‍💼 Busy Professional<br><small>Marketing manager, $75K/year</small></button>
+        <button class="topic-btn persona-btn" onclick="startPractice(1)">🎓 College Student<br><small>Business major, wants flexibility</small></button>
+        <button class="topic-btn persona-btn" onclick="startPractice(2)">👨‍👩‍👧 Skeptical Parent<br><small>Stay-at-home, very cautious</small></button>
+        <button class="topic-btn persona-btn" onclick="startPractice(3)">🔄 Career Changer<br><small>Left restaurant job, no sales exp</small></button>
+    `;
+}
+
+function startPractice(index) {
+    currentPersonaIndex = index;
+    const names = ['Busy Professional', 'College Student', 'Skeptical Parent', 'Career Changer'];
+    clearChat();
+    addSystemMessage(`Practice started with: **${names[index]}**. Start your pitch! Say "end practice" or "give me feedback" when done.`);
+    messageInput.focus();
+}
+
+function addSystemMessage(text) {
+    const welcomeMsg = messagesEl.querySelector('.welcome-message');
+    if (welcomeMsg) welcomeMsg.remove();
+
+    const msgDiv = document.createElement('div');
+    msgDiv.className = 'message system-msg';
+    msgDiv.innerHTML = `
+        <div class="system-message-content">${formatMessage(text)}</div>
+    `;
+    messagesEl.appendChild(msgDiv);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
 function sendTopic(topic) {
@@ -135,20 +187,27 @@ function sendTopic(topic) {
 
 function setMode(mode) {
     currentMode = mode;
+    currentPersonaIndex = null;
     modeBtns.forEach((btn) => {
         btn.classList.toggle('active', btn.dataset.mode === mode);
     });
-    headerTitle.textContent = mode === 'recruiting' ? 'Recruiting Mode' : 'Training Mode';
+    headerTitle.textContent = MODE_TITLES[mode] || mode;
     renderTopics();
 }
 
 function showWelcome() {
+    const modeMessages = {
+        recruiting: 'I can help you <strong>recruit top talent</strong> with your customized pitch.',
+        training: 'I can <strong>train your sales team</strong> with scripts, techniques, and coaching.',
+        customize: 'Tell me about your business and I\'ll <strong>learn how to recruit for you</strong>. Just talk naturally!',
+        practice: 'Pick a prospect persona and <strong>practice your sales pitch</strong>. I\'ll give you feedback and learn your best techniques!',
+    };
     messagesEl.innerHTML = `
         <div class="welcome-message">
             <div class="welcome-icon">⚡</div>
-            <h2>Welcome to SalesBot</h2>
-            <p>I'm your AI-powered sales assistant. I can help you <strong>recruit top talent</strong> or <strong>train your sales team</strong>.</p>
-            <p>Pick a mode from the sidebar and start chatting!</p>
+            <h2>${MODE_TITLES[currentMode]}</h2>
+            <p>${modeMessages[currentMode]}</p>
+            <p>${currentMode === 'practice' ? 'Choose a persona from the sidebar to start!' : 'Start chatting below!'}</p>
         </div>
     `;
 }
@@ -161,8 +220,16 @@ function clearChat() {
 }
 
 function formatMessage(text) {
-    return text
-        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    // Clean up the special markers for display
+    let cleaned = text
+        .replace(/---PROMPT_READY---/g, '')
+        .replace(/---END_PROMPT---/g, '')
+        .replace(/---FEEDBACK---/g, '\n**📋 Coaching Feedback:**\n')
+        .replace(/---END_FEEDBACK---/g, '')
+        .replace(/---LEARNED---/g, '\n**🧠 Techniques Saved to Your Bot:**\n')
+        .replace(/---END_LEARNED---/g, '');
+
+    return cleaned.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
 }
 
 function addMessage(role, content) {
@@ -214,6 +281,18 @@ function removeTyping() {
     if (typing) typing.remove();
 }
 
+function showNotification(text, type) {
+    const notif = document.createElement('div');
+    notif.className = `notification ${type}`;
+    notif.textContent = text;
+    document.body.appendChild(notif);
+    setTimeout(() => notif.classList.add('show'), 10);
+    setTimeout(() => {
+        notif.classList.remove('show');
+        setTimeout(() => notif.remove(), 300);
+    }, 4000);
+}
+
 async function sendMessage(text) {
     if (isLoading || !text.trim()) return;
 
@@ -227,15 +306,20 @@ async function sendMessage(text) {
     showTyping();
 
     try {
+        const body = {
+            message: text,
+            mode: currentMode,
+            history: chatHistory.slice(-20),
+            conversation_id: currentConversationId,
+        };
+        if (currentMode === 'practice' && currentPersonaIndex !== null) {
+            body.persona_index = currentPersonaIndex;
+        }
+
         const response = await fetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                message: text,
-                mode: currentMode,
-                history: chatHistory.slice(-20),
-                conversation_id: currentConversationId,
-            }),
+            body: JSON.stringify(body),
         });
 
         const data = await response.json();
@@ -249,6 +333,13 @@ async function sendMessage(text) {
             speakText(data.reply);
             if (data.conversation_id) {
                 currentConversationId = data.conversation_id;
+            }
+            // Show notifications for special events
+            if (data.prompt_saved) {
+                showNotification('✅ Your custom recruiting prompt has been saved! Switch to Recruiting mode to see it in action.', 'success');
+            }
+            if (data.techniques_learned) {
+                showNotification('🧠 New techniques learned and added to your recruiting bot!', 'success');
             }
             loadHistory();
         }
@@ -284,6 +375,13 @@ function highlightActiveConversation() {
     });
 }
 
+const MODE_ICONS = {
+    recruiting: '🎯',
+    training: '📈',
+    customize: '🛠️',
+    practice: '🎭',
+};
+
 async function loadHistory() {
     try {
         const response = await fetch('/api/conversations');
@@ -301,7 +399,7 @@ async function loadHistory() {
                     <div class="history-item-info">
                         <span class="history-item-title">${escapeHtml(conv.title)}</span>
                         <div class="history-item-meta">
-                            <span class="history-item-mode">${conv.mode === 'recruiting' ? '🎯' : '📈'} ${conv.mode}</span>
+                            <span class="history-item-mode">${MODE_ICONS[conv.mode] || '💬'} ${conv.mode}</span>
                             <span class="history-item-date">${formatDate(conv.updated_at)}</span>
                         </div>
                     </div>

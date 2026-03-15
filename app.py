@@ -1,9 +1,14 @@
 from flask import Flask, render_template, request, jsonify
 import os
+import random
 from dotenv import load_dotenv
 from openai import OpenAI
-from config import RECRUITING_PROMPT, TRAINING_PROMPT
-from database import init_db, create_conversation, add_message, get_conversations, get_conversation, delete_conversation, update_conversation_title
+from config import RECRUITING_PROMPT, TRAINING_PROMPT, CUSTOMIZE_PROMPT, PRACTICE_PROMPT_TEMPLATE, PRACTICE_PERSONAS
+from database import (
+    init_db, create_conversation, add_message, get_conversations,
+    get_conversation, delete_conversation, update_conversation_title,
+    get_custom_prompt, save_custom_prompt,
+)
 
 load_dotenv()
 
@@ -18,6 +23,18 @@ init_db()
 def get_system_prompt(mode):
     if mode == "training":
         return TRAINING_PROMPT
+    if mode == "customize":
+        return CUSTOMIZE_PROMPT
+    if mode == "practice":
+        persona = random.choice(PRACTICE_PERSONAS)
+        return PRACTICE_PROMPT_TEMPLATE.format(
+            persona=persona["persona"],
+            situation=persona["situation"],
+        )
+    # For recruiting, check if there's a custom prompt saved
+    custom = get_custom_prompt("recruiting")
+    if custom:
+        return custom
     return RECRUITING_PROMPT
 
 
@@ -33,6 +50,7 @@ def chat():
     mode = data.get("mode", "recruiting")
     history = data.get("history", [])
     conversation_id = data.get("conversation_id")
+    persona_index = data.get("persona_index")
 
     if not user_message:
         return jsonify({"error": "Message is required"}), 400
@@ -47,7 +65,15 @@ def chat():
 
     add_message(conversation_id, "user", user_message)
 
-    system_prompt = get_system_prompt(mode)
+    # Get the right system prompt
+    if mode == "practice" and persona_index is not None:
+        persona = PRACTICE_PERSONAS[int(persona_index) % len(PRACTICE_PERSONAS)]
+        system_prompt = PRACTICE_PROMPT_TEMPLATE.format(
+            persona=persona["persona"],
+            situation=persona["situation"],
+        )
+    else:
+        system_prompt = get_system_prompt(mode)
 
     messages = [{"role": "system", "content": system_prompt}]
     for msg in history:
@@ -60,11 +86,39 @@ def chat():
             model=MODEL,
             messages=messages,
             temperature=0.7,
-            max_tokens=1000,
+            max_tokens=1500,
         )
         reply = response.choices[0].message.content
+
+        # Check if customize mode generated a prompt
+        prompt_saved = False
+        if mode == "customize" and "---PROMPT_READY---" in reply:
+            prompt_start = reply.index("---PROMPT_READY---") + len("---PROMPT_READY---")
+            prompt_end = reply.index("---END_PROMPT---")
+            new_prompt = reply[prompt_start:prompt_end].strip()
+            save_custom_prompt("recruiting", new_prompt)
+            prompt_saved = True
+
+        # Check if practice mode found learned techniques
+        learned = None
+        if mode == "practice" and "---LEARNED---" in reply:
+            learn_start = reply.index("---LEARNED---") + len("---LEARNED---")
+            learn_end = reply.index("---END_LEARNED---")
+            learned = reply[learn_start:learn_end].strip()
+            # Append learned techniques to the custom recruiting prompt
+            current_prompt = get_custom_prompt("recruiting")
+            if current_prompt and learned:
+                updated = current_prompt + "\n\nTechniques learned from practice sessions:\n" + learned
+                save_custom_prompt("recruiting", updated)
+
         add_message(conversation_id, "assistant", reply)
-        return jsonify({"reply": reply, "conversation_id": conversation_id})
+
+        result = {"reply": reply, "conversation_id": conversation_id}
+        if prompt_saved:
+            result["prompt_saved"] = True
+        if learned:
+            result["techniques_learned"] = True
+        return jsonify(result)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -97,6 +151,22 @@ def update_title(conv_id):
         return jsonify({"error": "Title is required"}), 400
     update_conversation_title(conv_id, title)
     return jsonify({"success": True})
+
+
+@app.route("/api/personas", methods=["GET"])
+def get_personas():
+    return jsonify({
+        "personas": [
+            {"index": i, "name": p["name"], "description": p["situation"]}
+            for i, p in enumerate(PRACTICE_PERSONAS)
+        ]
+    })
+
+
+@app.route("/api/custom-prompt", methods=["GET"])
+def get_prompt():
+    prompt = get_custom_prompt("recruiting")
+    return jsonify({"has_custom": prompt is not None})
 
 
 if __name__ == "__main__":

@@ -676,6 +676,67 @@ body {
     margin-top: 10px;
 }
 
+/* System messages */
+.message.system-msg {
+    justify-content: center;
+    max-width: 100%;
+}
+
+.system-message-content {
+    background: linear-gradient(135deg, var(--accent-glow), rgba(168, 85, 247, 0.15));
+    border: 1px solid var(--accent);
+    border-radius: var(--radius);
+    padding: 12px 20px;
+    font-size: 13px;
+    text-align: center;
+    color: var(--text-primary);
+}
+
+/* Persona selection */
+.persona-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    padding: 4px;
+    margin-bottom: 4px;
+}
+
+.persona-btn {
+    padding: 12px !important;
+    line-height: 1.4;
+}
+
+.persona-btn small {
+    color: var(--text-muted);
+    font-size: 11px;
+}
+
+/* Notifications */
+.notification {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    padding: 14px 20px;
+    border-radius: var(--radius);
+    font-size: 14px;
+    font-weight: 500;
+    font-family: 'Inter', sans-serif;
+    z-index: 1000;
+    transform: translateX(120%);
+    transition: transform 0.3s ease;
+    max-width: 400px;
+    box-shadow: var(--shadow);
+}
+
+.notification.show {
+    transform: translateX(0);
+}
+
+.notification.success {
+    background: linear-gradient(135deg, #00b894, #00a381);
+    color: white;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
     .sidebar {
@@ -688,5 +749,11 @@ body {
 
     .input-area {
         padding: 12px 16px 16px;
+    }
+
+    .notification {
+        left: 16px;
+        right: 16px;
+        max-width: none;
     }
 }
